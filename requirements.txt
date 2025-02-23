@@ -4,14 +4,20 @@ annotated-types==0.7.0
     # via pydantic
 anyio==4.8.0
     # via starlette
+cffi==1.17.1
+    # via cryptography
 click==8.1.8
     # via uvicorn
+cryptography==44.0.1
+    # via backend (pyproject.toml)
 fastapi==0.115.8
     # via backend (pyproject.toml)
 h11==0.14.0
     # via uvicorn
 idna==3.10
     # via anyio
+pycparser==2.22
+    # via cffi
 pydantic==2.10.6
     # via
     #   backend (pyproject.toml)

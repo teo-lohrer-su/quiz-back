@@ -1,10 +1,10 @@
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends 
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Dict, Optional
+from typing import List
 import uuid
-import os
 from datetime import datetime
+from .security import verify_api_key
 
 app = FastAPI()
 
@@ -16,9 +16,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory storage (replace with database in production)
-# API_KEYS = {"test_key"}  # Store securely in production
-API_KEY = os.environ.get("API_KEY")
 active_pages = {}  # {page_id: {current_question: None, answers: [], ...}}
 
 
@@ -39,12 +36,6 @@ class Page(BaseModel):
 
 class StudentAnswer(BaseModel):
     option_index: int
-
-
-def verify_api_key(api_key: str = Header(...)):
-    if api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="Invalid API key")
-    return api_key
 
 
 @app.post("/api/pages/", response_model=dict)
@@ -171,6 +162,14 @@ async def close_question(page_id: str, api_key: str = Depends(verify_api_key)):
     }
 
     return stats
+
+# @app.post("/api/revoke/{token_id}")
+# async def revoke_token(
+#     token_id: str,
+#     key_data: dict = Depends(verify_api_key)  # Only allow revocation by valid token holders
+# ):
+#     REVOKED_TOKENS.add(token_id)
+#     return {"status": "success", "message": f"Token {token_id} has been revoked"}
 
 
 if __name__ == "__main__":
