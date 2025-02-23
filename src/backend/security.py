@@ -35,9 +35,7 @@ def verify_api_key(api_key: str = Header(...)):
         
         # Split the raw data into payload and signature
         payload_bytes = raw_data[:-SIGNATURE_SIZE]
-        print(f"payload_bytes: {payload_bytes}")
         signature = raw_data[-SIGNATURE_SIZE:]
-        print(f"signature: {signature}")
         
         # Parse the payload
         payload = json.loads(payload_bytes)
