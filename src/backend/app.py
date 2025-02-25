@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List
 import uuid
 from datetime import datetime
-from backend.security import verify_api_key
+from .security import verify_api_key
 
 app = FastAPI()
 
