@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import List
 import uuid
 from datetime import datetime
-from .security import verify_api_key
+from backend.security import verify_api_key
 
 app = FastAPI()
 
@@ -27,6 +27,7 @@ class Option(BaseModel):
 class Question(BaseModel):
     text: str
     options: List[Option]
+    allow_multiple: bool = False  # New field to indicate if multiple choices are allowed
 
 
 class Page(BaseModel):
@@ -35,7 +36,7 @@ class Page(BaseModel):
 
 
 class StudentAnswer(BaseModel):
-    option_index: int
+    option_indices: List[int]  # Changed from option_index to option_indices as a list
 
 
 @app.post("/api/pages/", response_model=dict)
@@ -63,6 +64,8 @@ async def get_page_status(page_id: str):
         sanitized_question["options"] = [
             {"text": opt["text"]} for opt in sanitized_question["options"]
         ]
+        # Include the allow_multiple flag so the frontend knows
+        sanitized_question["allow_multiple"] = page_data["current_question"].get("allow_multiple", False)
         page_data["current_question"] = sanitized_question
 
     return page_data
@@ -86,6 +89,7 @@ async def post_question(
         "options": [
             {"text": opt.text, "is_correct": opt.is_correct} for opt in question.options
         ],
+        "allow_multiple": question.allow_multiple,
         "created_at": datetime.now().isoformat(),
         "active": True,
     }
@@ -105,16 +109,35 @@ async def post_answer(page_id: str, answer: StudentAnswer):
     if not page["current_question"] or not page["current_question"]["active"]:
         raise HTTPException(status_code=400, detail="No active question")
 
-    if answer.option_index >= len(page["current_question"]["options"]):
-        raise HTTPException(status_code=400, detail="Invalid option index")
+    # Validate that option indices are valid
+    num_options = len(page["current_question"]["options"])
+    for idx in answer.option_indices:
+        if idx < 0 or idx >= num_options:
+            raise HTTPException(status_code=400, detail=f"Invalid option index: {idx}")
+
+    # If not a multiple choice question, validate that only one option is selected
+    if not page["current_question"].get("allow_multiple", False) and len(answer.option_indices) > 1:
+        raise HTTPException(status_code=400, detail="Multiple selections not allowed for this question")
+    
+    # Calculate if the answer is correct based on selected options
+    # For multiple choice: all correct options must be selected and no incorrect ones
+    if page["current_question"].get("allow_multiple", False):
+        # Get all indices for correct options
+        correct_indices = [
+            i for i, opt in enumerate(page["current_question"]["options"]) 
+            if opt["is_correct"]
+        ]
+        # Check if selected options match exactly with correct options
+        is_correct = set(answer.option_indices) == set(correct_indices)
+    else:
+        # For single choice, just check if the selected option is correct
+        is_correct = page["current_question"]["options"][answer.option_indices[0]]["is_correct"] if answer.option_indices else False
 
     # Record the answer
     answer_data = {
-        "option_index": answer.option_index,
+        "option_indices": answer.option_indices,
         "timestamp": datetime.now().isoformat(),
-        "is_correct": page["current_question"]["options"][answer.option_index][
-            "is_correct"
-        ],
+        "is_correct": is_correct,
     }
     page["answers"].append(answer_data)
 
@@ -136,10 +159,13 @@ async def close_question(page_id: str, api_key: str = Depends(verify_api_key)):
     total_answers = len(page["answers"])
     correct_answers = sum(1 for ans in page["answers"] if ans["is_correct"])
 
+    # Calculate option selection statistics
     option_stats = {}
     for i, _ in enumerate(page["current_question"]["options"]):
+        # Count how many times each option was selected
+        count = sum(1 for ans in page["answers"] if i in ans["option_indices"])
         option_stats[i] = {
-            "count": sum(1 for ans in page["answers"] if ans["option_index"] == i),
+            "count": count,
             "is_correct": page["current_question"]["options"][i]["is_correct"],
         }
 
@@ -159,6 +185,7 @@ async def close_question(page_id: str, api_key: str = Depends(verify_api_key)):
             }
             for i, stats in option_stats.items()
         },
+        "is_multiple_choice": page["current_question"].get("allow_multiple", False)
     }
 
     return stats
